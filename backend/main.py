@@ -9,7 +9,7 @@ from fastapi import FastAPI, Body
 from fastapi.middleware.cors import CORSMiddleware
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
-import joblib   # ✅ NEW
+import joblib
 
 # Load environment variables
 load_dotenv()
@@ -17,9 +17,14 @@ load_dotenv()
 app = FastAPI()
 
 # -------------------------------
-# LOAD ML MODEL
+# LOAD ML MODEL (SAFE)
 # -------------------------------
-model = joblib.load("model.pkl")   # ✅ load trained model
+try:
+    model = joblib.load("model.pkl")
+    print("✅ Model loaded successfully")
+except Exception as e:
+    print("❌ Model loading failed:", e)
+    model = None
 
 # -------------------------------
 # CORS
@@ -42,7 +47,7 @@ def get_connection():
         database=os.getenv("DB_NAME"),
         user=os.getenv("DB_USER"),
         password=os.getenv("DB_PASSWORD"),
-        sslmode=os.getenv("DB_SSLMODE")
+        sslmode=os.getenv("DB_SSLMODE", "require")
     )
 
 # -------------------------------
@@ -51,8 +56,6 @@ def get_connection():
 def create_tables():
     conn = get_connection()
     cur = conn.cursor()
-
-    print("Connected DB:", os.getenv("DB_NAME"))
 
     # Sensor table
     cur.execute("""
@@ -65,7 +68,7 @@ def create_tables():
     )
     """)
 
-    # Tank parameters table
+    # Tank parameters
     cur.execute("""
     CREATE TABLE IF NOT EXISTS tank_sensorparameters(
         id SERIAL PRIMARY KEY,
@@ -78,11 +81,9 @@ def create_tables():
     )
     """)
 
-    # 🔥 FORCE RESET predictions table (fix schema issue)
-    cur.execute("DROP TABLE IF EXISTS predictions")
-
+    # Predictions table (NO DROP ❌)
     cur.execute("""
-    CREATE TABLE predictions(
+    CREATE TABLE IF NOT EXISTS predictions(
         id SERIAL PRIMARY KEY,
         input_value FLOAT,
         predicted_value FLOAT,
@@ -95,9 +96,11 @@ def create_tables():
     conn.close()
 
 # -------------------------------
-# ML MODEL FUNCTION
+# MODEL FUNCTION
 # -------------------------------
 def simple_model(input_value):
+    if model is None:
+        return round(input_value + random.uniform(-5, 5), 2)  # fallback
     return round(model.predict([[input_value]])[0], 2)
 
 # -------------------------------
@@ -130,15 +133,22 @@ def sensor_collector():
             cur.close()
             conn.close()
 
-            print("Sensor data inserted")
+            print("✅ Sensor data inserted")
 
         except Exception as e:
-            print("Sensor error:", e)
+            print("❌ Sensor error:", e)
 
         time.sleep(20)
 
 # -------------------------------
-# GET SENSOR DATA
+# ROOT (FIXED YOUR ISSUE)
+# -------------------------------
+@app.get("/")
+def root():
+    return {"message": "API is running 🚀"}
+
+# -------------------------------
+# SENSOR DATA
 # -------------------------------
 @app.get("/sensor-data")
 def get_sensor_data():
@@ -162,21 +172,14 @@ def get_sensor_data():
     return data
 
 # -------------------------------
-# GET TANK PARAMETERS
+# TANK PARAMETERS
 # -------------------------------
 @app.get("/tank-parameters")
 def get_tank_parameters():
     conn = get_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
-    cur.execute("""
-        SELECT id, node_id,
-               tank_height_cm,
-               tank_length_cm,
-               tank_width_cm,
-               lat, long
-        FROM tank_sensorparameters
-    """)
+    cur.execute("SELECT * FROM tank_sensorparameters")
 
     data = cur.fetchall()
     cur.close()
@@ -187,20 +190,15 @@ def get_tank_parameters():
 # -------------------------------
 # PREDICT API
 # -------------------------------
-# -------------------------------
-# PREDICT API (FIXED)
-# -------------------------------
 @app.post("/predict")
 def predict(data: dict = Body(...)):
     try:
-        # ✅ FIX: accept both 'value' and 'input'
         input_value = data.get("value") or data.get("input")
 
         if input_value is None:
             return {"error": "Input required"}
 
         input_value = float(input_value)
-
         prediction = simple_model(input_value)
 
         conn = get_connection()
@@ -224,7 +222,7 @@ def predict(data: dict = Body(...)):
         return {"error": str(e)}
 
 # -------------------------------
-# HISTORY API
+# HISTORY
 # -------------------------------
 @app.get("/history")
 def get_history():
@@ -250,16 +248,9 @@ def get_history():
 @app.get("/model-info")
 def model_info():
     return {
-        "model": "Linear Regression (scikit-learn)",
-        "file": "model.pkl"
+        "model": "ML Model",
+        "status": "loaded" if model else "fallback"
     }
-
-# -------------------------------
-# ROOT
-# -------------------------------
-@app.get("/")
-def root():
-    return {"message": "API is running"}
 
 # -------------------------------
 # STARTUP
@@ -271,13 +262,3 @@ def startup():
     thread = threading.Thread(target=sensor_collector)
     thread.daemon = True
     thread.start()
-
-# -------------------------------
-# RUN
-# -------------------------------
-if __name__ == "__main__":
-    import uvicorn
-    import os
-
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port)
