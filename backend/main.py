@@ -22,7 +22,7 @@ app = FastAPI()
 # LOAD MODEL (SAFE)
 # -------------------------------
 try:
-    model = joblib.load("model.pkl")
+    model = joblib.load("backend/model.pkl")
     print("✅ Model loaded")
 except Exception as e:
     print("❌ Model load failed:", e)
