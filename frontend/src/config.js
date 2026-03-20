@@ -1,8 +1,7 @@
 const config = {
-  API_BASE: "http://localhost:8000",
-  SENSOR_DATA_URL: "http://localhost:8000/sensor-data",
-  PREDICTION_URL: "http://localhost:8000/predictions",
-  TANK_PARAMETERS_URL: "http://localhost:8000/tank-parameters"
+  PREDICTION_URL: "http://127.0.0.1:8000/predict",   // ✅ FIX THIS
+  SENSOR_DATA_URL: "http://127.0.0.1:8000/sensor-data",
+  HISTORY_URL: "http://127.0.0.1:8000/history"
 };
 
 export default config;

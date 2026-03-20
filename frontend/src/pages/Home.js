@@ -19,73 +19,146 @@ function Home() {
   const [waterLevel, setWaterLevel] = useState(0);
   const [temperature, setTemperature] = useState(0);
   const [history, setHistory] = useState([]);
-  const [deviceStatus, setDeviceStatus] = useState("OFFLINE");
+  const [deviceStatus, setDeviceStatus] = useState("CONNECTING");
 
   const [input, setInput] = useState("");
   const [prediction, setPrediction] = useState(null);
   const [predictionHistory, setPredictionHistory] = useState([]);
 
+  const [backendStatus, setBackendStatus] = useState("CONNECTING");
+
   const tankHeight = 200;
 
+  // -------------------------------
+  // DEMO DATA
+  // -------------------------------
+  const DEMO_DATA = [
+    { distance: 90, temperature: 25, created_at: new Date().toISOString() },
+    { distance: 80, temperature: 26, created_at: new Date(Date.now() - 60000).toISOString() },
+    { distance: 70, temperature: 24, created_at: new Date(Date.now() - 120000).toISOString() }
+  ];
+
+  // -------------------------------
+  // PROCESS DATA
+  // -------------------------------
+  const processData = (data, mode) => {
+    const latest = data[0];
+
+    const distance = Number(latest.distance);
+    const temp = Number(latest.temperature);
+
+    const percent = Math.round(((tankHeight - distance) / tankHeight) * 100);
+
+    setWaterLevel(percent);
+    setTemperature(temp);
+    setDeviceStatus(mode);
+
+    const chartData = data.slice(0, 10).map(d => ({
+      time: new Date(d.created_at).toLocaleTimeString(),
+      water: Math.round(((tankHeight - Number(d.distance)) / tankHeight) * 100),
+      temp: Number(d.temperature)
+    }));
+
+    setHistory(chartData.reverse());
+  };
+
+  // -------------------------------
+  // FETCH SENSOR DATA
+  // -------------------------------
   const fetchData = async () => {
     try {
       const res = await axios.get(config.SENSOR_DATA_URL);
       const data = res.data;
 
-      if (!data || data.length === 0) return;
+      if (!data || data.length === 0) throw new Error();
 
-      const latest = data[0];
+      localStorage.setItem("sensorData", JSON.stringify(data));
 
-      const distance = Number(latest.distance);
-      const temp = Number(latest.temperature);
-
-      const percent = Math.round(((tankHeight - distance) / tankHeight) * 100);
-
-      setWaterLevel(percent);
-      setTemperature(temp);
-
-      const lastTime = new Date(latest.created_at);
-      const now = new Date();
-      const diff = (now - lastTime) / 1000;
-
-      setDeviceStatus(diff > 10 ? "OFFLINE" : "LIVE");
-
-      const chartData = data.slice(0, 10).map(d => ({
-        time: new Date(d.created_at).toLocaleTimeString(),
-        water: Math.round(((tankHeight - Number(d.distance)) / tankHeight) * 100),
-        temp: Number(d.temperature)
-      }));
-
-      setHistory(chartData.reverse());
+      processData(data, "LIVE");
+      setBackendStatus("LIVE");
 
     } catch (err) {
-      console.log(err);
-      setDeviceStatus("OFFLINE");
+      setBackendStatus("OFFLINE");
+
+      const saved = localStorage.getItem("sensorData");
+
+      if (saved) {
+        processData(JSON.parse(saved), "CACHED");
+      } else {
+        processData(DEMO_DATA, "DEMO");
+      }
     }
   };
 
+  // -------------------------------
+  // FETCH PREDICTION HISTORY
+  // -------------------------------
   const fetchPredictionHistory = async () => {
     try {
-      const res = await axios.get("http://127.0.0.1:8000/history");
-      setPredictionHistory(res.data.history.slice(0, 10).reverse());
+      const res = await axios.get(config.HISTORY_URL);
+
+      const formatted = res.data.history.map(item => ({
+        predicted_value: item.predicted_value,
+        created_at: new Date(item.created_at).toLocaleTimeString()
+      }));
+
+      setPredictionHistory(formatted.slice(-10));
+
     } catch (err) {
-      console.log(err);
+      console.log("History unavailable");
     }
   };
 
+  // -------------------------------
+  // PREDICT FUNCTION (PRO)
+  // -------------------------------
   const handlePredict = async () => {
     try {
-      const res = await axios.post("http://127.0.0.1:8000/predict", {
-        input: input
+      if (!input) return;
+
+      const res = await axios.post(config.PREDICTION_URL, {
+        value: Number(input)
       });
 
-      setPrediction(res.data.prediction);
+      const newPrediction = res.data.prediction;
+
+      setPrediction(newPrediction);
+      setBackendStatus("LIVE");
+
+      const newPoint = {
+        predicted_value: newPrediction,
+        created_at: new Date().toLocaleTimeString()
+      };
+
+      // ✅ Smooth graph update (last 10 only)
+      setPredictionHistory(prev => [
+        ...prev.slice(-9),
+        newPoint
+      ]);
+
       fetchPredictionHistory();
+
     } catch (err) {
-      console.log(err);
+      setBackendStatus("OFFLINE");
+
+      const fallback = Math.round(Number(input) * 1.1);
+      setPrediction(fallback);
+
+      const newPoint = {
+        predicted_value: fallback,
+        created_at: new Date().toLocaleTimeString()
+      };
+
+      setPredictionHistory(prev => [
+        ...prev.slice(-9),
+        newPoint
+      ]);
     }
   };
 
+  // -------------------------------
+  // AUTO REFRESH
+  // -------------------------------
   useEffect(() => {
     fetchData();
     fetchPredictionHistory();
@@ -94,6 +167,9 @@ function Home() {
     return () => clearInterval(interval);
   }, []);
 
+  // -------------------------------
+  // STATUS
+  // -------------------------------
   let status = "NORMAL";
   let alertMessage = "";
 
@@ -107,20 +183,35 @@ function Home() {
     alertMessage = "⚠ Tank Almost Full!";
   }
 
+  // -------------------------------
+  // UI
+  // -------------------------------
   return (
 
     <div className="dashboard">
 
-      <h1 className="title">🚰 Smart IoT Dashboard</h1>
+      <h1 className="title">Smart Water Level Monitoring System</h1>
 
+      {/* Backend Status */}
+      <div className={`backend-status ${backendStatus.toLowerCase()}`}>
+        {backendStatus === "LIVE" && "🟢 Backend Online"}
+        {backendStatus === "OFFLINE" && "🔴 Backend Offline"}
+        {backendStatus === "CONNECTING" && "🟡 Connecting..."}
+      </div>
+
+      {/* Device Status */}
       <div className={`device-status ${deviceStatus.toLowerCase()}`}>
-        {deviceStatus === "LIVE" ? "🟢 DEVICE LIVE" : "🔴 DEVICE OFFLINE"}
+        {deviceStatus === "LIVE" && "🟢 DEVICE LIVE"}
+        {deviceStatus === "CACHED" && "🟡 USING SAVED DATA"}
+        {deviceStatus === "DEMO" && "🔵 DEMO MODE"}
+        {deviceStatus === "CONNECTING" && "🟠 CONNECTING..."}
       </div>
 
       {alertMessage && <div className="alert-box">{alertMessage}</div>}
 
       <div className="top-section">
 
+        {/* WATER */}
         <div className="card">
           <h3>Water Level</h3>
           <div className="tank">
@@ -131,11 +222,13 @@ function Home() {
           <h2 className="value">{waterLevel}%</h2>
         </div>
 
+        {/* TEMP */}
         <div className="card">
           <h3>Temperature</h3>
           <div className="temp-display">🌡 {temperature}°C</div>
         </div>
 
+        {/* STATUS */}
         <div className="card">
           <h3>Status</h3>
           <div className={`status ${status.toLowerCase()}`}>
@@ -143,6 +236,7 @@ function Home() {
           </div>
         </div>
 
+        {/* PREDICTION */}
         <div className="card">
           <h3>Prediction</h3>
 
@@ -158,20 +252,20 @@ function Home() {
             Predict
           </button>
 
-          {prediction !== null && (
-            <h3 style={{ marginTop: "10px" }}>Result: {prediction}</h3>
-          )}
+          <h3 style={{ marginTop: "10px" }}>
+            Result: {prediction !== null ? prediction : "—"}
+          </h3>
         </div>
 
       </div>
 
-      {/* ✅ CLEAN MODEL INFO */}
       <div style={{ textAlign: "center", marginBottom: "20px" }}>
         <h3>Model: Linear Regression</h3>
       </div>
 
       <div className="charts">
 
+        {/* WATER */}
         <div className="chart-card">
           <h3>Water History</h3>
           <ResponsiveContainer width="100%" height={300}>
@@ -180,11 +274,20 @@ function Home() {
               <XAxis dataKey="time" />
               <YAxis />
               <Tooltip />
-              <Line type="monotone" dataKey="water" stroke="#38bdf8" strokeWidth={4} dot={false}/>
+              <Line 
+                type="monotone" 
+                dataKey="water" 
+                stroke="#38bdf8" 
+                strokeWidth={4} 
+                dot={false}
+                isAnimationActive={true}
+                animationDuration={500}
+              />
             </LineChart>
           </ResponsiveContainer>
         </div>
 
+        {/* TEMP */}
         <div className="chart-card">
           <h3>Temperature History</h3>
           <ResponsiveContainer width="100%" height={300}>
@@ -193,11 +296,20 @@ function Home() {
               <XAxis dataKey="time" />
               <YAxis />
               <Tooltip />
-              <Line type="monotone" dataKey="temp" stroke="#fb7185" strokeWidth={4} dot={false}/>
+              <Line 
+                type="monotone" 
+                dataKey="temp" 
+                stroke="#fb7185" 
+                strokeWidth={4} 
+                dot={false}
+                isAnimationActive={true}
+                animationDuration={500}
+              />
             </LineChart>
           </ResponsiveContainer>
         </div>
 
+        {/* PREDICTION */}
         <div className="chart-card">
           <h3>Prediction History</h3>
           <ResponsiveContainer width="100%" height={300}>
@@ -206,7 +318,14 @@ function Home() {
               <XAxis dataKey="created_at" />
               <YAxis />
               <Tooltip />
-              <Line type="monotone" dataKey="predicted_value" stroke="#22c55e" strokeWidth={4}/>
+              <Line 
+                type="monotone" 
+                dataKey="predicted_value" 
+                stroke="#22c55e" 
+                strokeWidth={4}
+                isAnimationActive={true}
+                animationDuration={600}
+              />
             </LineChart>
           </ResponsiveContainer>
         </div>

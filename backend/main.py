@@ -187,10 +187,14 @@ def get_tank_parameters():
 # -------------------------------
 # PREDICT API
 # -------------------------------
+# -------------------------------
+# PREDICT API (FIXED)
+# -------------------------------
 @app.post("/predict")
 def predict(data: dict = Body(...)):
     try:
-        input_value = data.get("input")
+        # ✅ FIX: accept both 'value' and 'input'
+        input_value = data.get("value") or data.get("input")
 
         if input_value is None:
             return {"error": "Input required"}

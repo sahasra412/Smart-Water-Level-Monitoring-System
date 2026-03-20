@@ -1,3 +1,6 @@
+/* -------------------------------
+   GLOBAL
+-------------------------------- */
 body{
 margin:0;
 font-family:"Poppins",sans-serif;
@@ -6,25 +9,58 @@ color:white;
 padding:30px;
 }
 
-/* TITLE */
-
+/* -------------------------------
+   TITLE
+-------------------------------- */
 .title{
 text-align:center;
 font-size:42px;
 font-weight:900;
-margin-bottom:15px;
+margin-bottom:10px;
 }
 
-/* DEVICE STATUS */
+/* -------------------------------
+   BACKEND STATUS (NEW)
+-------------------------------- */
+.backend-status{
+text-align:center;
+font-size:14px;
+font-weight:800;
+margin-bottom:10px;
+padding:6px 14px;
+border-radius:20px;
+width:fit-content;
+margin-left:auto;
+margin-right:auto;
+}
 
+.backend-status.live{
+background:#16a34a;
+color:white;
+}
+
+.backend-status.offline{
+background:#dc2626;
+color:white;
+animation:blink 1s infinite;
+}
+
+.backend-status.connecting{
+background:#f59e0b;
+color:black;
+}
+
+/* -------------------------------
+   DEVICE STATUS
+-------------------------------- */
 .device-status{
 text-align:center;
-font-size:20px;
+font-size:18px;
 font-weight:800;
-margin-bottom:15px;
-padding:10px;
+margin-bottom:20px;
+padding:8px;
 border-radius:10px;
-width:250px;
+width:260px;
 margin-left:auto;
 margin-right:auto;
 }
@@ -34,14 +70,24 @@ background:rgba(34,197,94,0.2);
 color:#22c55e;
 }
 
-.device-status.offline{
-background:rgba(239,68,68,0.2);
-color:#ef4444;
-animation:blink 1s infinite;
+.device-status.cached{
+background:rgba(250,204,21,0.2);
+color:#facc15;
 }
 
-/* ALERT */
+.device-status.demo{
+background:rgba(56,189,248,0.2);
+color:#38bdf8;
+}
 
+.device-status.connecting{
+background:rgba(245,158,11,0.2);
+color:#f59e0b;
+}
+
+/* -------------------------------
+   ALERT
+-------------------------------- */
 .alert-box{
 background:#ef4444;
 padding:15px;
@@ -58,8 +104,9 @@ animation:blink 1.2s infinite;
 100%{opacity:1}
 }
 
-/* TOP SECTION */
-
+/* -------------------------------
+   TOP SECTION
+-------------------------------- */
 .top-section{
 display:flex;
 justify-content:center;
@@ -68,8 +115,9 @@ flex-wrap:wrap;
 margin-bottom:40px;
 }
 
-/* CARD */
-
+/* -------------------------------
+   CARD
+-------------------------------- */
 .card{
 background:rgba(255,255,255,0.08);
 backdrop-filter:blur(12px);
@@ -82,11 +130,12 @@ transition:0.3s;
 }
 
 .card:hover{
-transform:translateY(-10px);
+transform:translateY(-10px) scale(1.02);
 }
 
-/* WATER TANK */
-
+/* -------------------------------
+   WATER TANK
+-------------------------------- */
 .tank{
 height:260px;
 width:150px;
@@ -95,11 +144,10 @@ border-radius:16px;
 overflow:hidden;
 position:relative;
 margin:20px auto;
-background:transparent; /* removes unwanted line */
+background:transparent;
 }
 
 /* WATER */
-
 .water{
 position:absolute;
 bottom:0;
@@ -111,8 +159,7 @@ overflow:hidden;
 box-shadow:0 0 20px rgba(56,189,248,0.6);
 }
 
-/* REALISTIC WAVE */
-
+/* WAVE */
 .wave{
 position:absolute;
 top:-20px;
@@ -123,8 +170,6 @@ background:rgba(255,255,255,0.3);
 border-radius:40%;
 animation:waveMove 3s linear infinite;
 }
-
-/* SECOND WAVE (more realistic) */
 
 .wave::after{
 content:"";
@@ -138,31 +183,32 @@ border-radius:40%;
 animation:waveMove 4s linear infinite reverse;
 }
 
-/* WAVE ANIMATION */
-
 @keyframes waveMove{
 0%{transform:translateX(-50%)}
 100%{transform:translateX(0)}
 }
 
-/* VALUE */
-
+/* -------------------------------
+   VALUE
+-------------------------------- */
 .value{
 font-size:42px;
 font-weight:900;
 color:#38bdf8;
 }
 
-/* TEMPERATURE */
-
+/* -------------------------------
+   TEMPERATURE
+-------------------------------- */
 .temp-display{
 font-size:38px;
 font-weight:900;
 color:#fb7185;
 }
 
-/* STATUS */
-
+/* -------------------------------
+   STATUS TEXT
+-------------------------------- */
 .status{
 font-size:28px;
 font-weight:900;
@@ -173,8 +219,39 @@ margin-top:10px;
 .status.full{color:#3b82f6;}
 .status.normal{color:#22c55e;}
 
-/* CHARTS */
+/* -------------------------------
+   INPUT + BUTTON (NEW)
+-------------------------------- */
+input{
+padding:10px;
+border-radius:8px;
+border:none;
+outline:none;
+width:80%;
+margin-bottom:10px;
+font-size:16px;
+text-align:center;
+}
 
+button{
+padding:10px 20px;
+border:none;
+border-radius:8px;
+background:#22c55e;
+color:white;
+font-weight:700;
+cursor:pointer;
+transition:0.3s;
+}
+
+button:hover{
+background:#16a34a;
+transform:scale(1.05);
+}
+
+/* -------------------------------
+   CHARTS
+-------------------------------- */
 .charts{
 display:flex;
 gap:30px;
@@ -188,4 +265,28 @@ background:rgba(255,255,255,0.08);
 padding:25px;
 border-radius:18px;
 box-shadow:0 10px 30px rgba(0,0,0,0.5);
+transition:0.3s;
+}
+
+.chart-card:hover{
+transform:scale(1.01);
+}
+
+/* -------------------------------
+   RESPONSIVE (NEW)
+-------------------------------- */
+@media (max-width:768px){
+
+.top-section{
+flex-direction:column;
+align-items:center;
+}
+
+.card{
+width:90%;
+}
+
+.chart-card{
+min-width:100%;
+}
 }
