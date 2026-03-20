@@ -11,19 +11,21 @@ from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
 import joblib
 
-# Load environment variables
+# -------------------------------
+# LOAD ENV
+# -------------------------------
 load_dotenv()
 
 app = FastAPI()
 
 # -------------------------------
-# LOAD ML MODEL (SAFE)
+# LOAD MODEL (SAFE)
 # -------------------------------
 try:
     model = joblib.load("model.pkl")
-    print("✅ Model loaded successfully")
+    print("✅ Model loaded")
 except Exception as e:
-    print("❌ Model loading failed:", e)
+    print("❌ Model load failed:", e)
     model = None
 
 # -------------------------------
@@ -38,26 +40,33 @@ app.add_middleware(
 )
 
 # -------------------------------
-# DATABASE CONNECTION
+# DB CONNECTION (SAFE)
 # -------------------------------
 def get_connection():
-    return psycopg2.connect(
-        host=os.getenv("DB_HOST"),
-        port=os.getenv("DB_PORT"),
-        database=os.getenv("DB_NAME"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-        sslmode=os.getenv("DB_SSLMODE", "require")
-    )
+    try:
+        return psycopg2.connect(
+            host=os.getenv("DB_HOST"),
+            port=os.getenv("DB_PORT"),
+            database=os.getenv("DB_NAME"),
+            user=os.getenv("DB_USER"),
+            password=os.getenv("DB_PASSWORD"),
+            sslmode=os.getenv("DB_SSLMODE", "require")
+        )
+    except Exception as e:
+        print("❌ DB ERROR:", e)
+        return None
 
 # -------------------------------
-# CREATE TABLES
+# CREATE TABLES (SAFE)
 # -------------------------------
 def create_tables():
     conn = get_connection()
+    if conn is None:
+        print("⚠️ Skipping DB setup")
+        return
+
     cur = conn.cursor()
 
-    # Sensor table
     cur.execute("""
     CREATE TABLE IF NOT EXISTS sensor_data(
         id SERIAL PRIMARY KEY,
@@ -68,7 +77,6 @@ def create_tables():
     )
     """)
 
-    # Tank parameters
     cur.execute("""
     CREATE TABLE IF NOT EXISTS tank_sensorparameters(
         id SERIAL PRIMARY KEY,
@@ -81,7 +89,6 @@ def create_tables():
     )
     """)
 
-    # Predictions table (NO DROP ❌)
     cur.execute("""
     CREATE TABLE IF NOT EXISTS predictions(
         id SERIAL PRIMARY KEY,
@@ -100,7 +107,7 @@ def create_tables():
 # -------------------------------
 def simple_model(input_value):
     if model is None:
-        return round(input_value + random.uniform(-5, 5), 2)  # fallback
+        return round(input_value + random.uniform(-5, 5), 2)
     return round(model.predict([[input_value]])[0], 2)
 
 # -------------------------------
@@ -114,16 +121,19 @@ def generate_data():
     return distance, temperature
 
 # -------------------------------
-# SENSOR THREAD
+# SENSOR THREAD (SAFE)
 # -------------------------------
 def sensor_collector():
     while True:
         try:
+            conn = get_connection()
+            if conn is None:
+                time.sleep(10)
+                continue
+
             distance, temperature = generate_data()
 
-            conn = get_connection()
             cur = conn.cursor()
-
             cur.execute("""
             INSERT INTO sensor_data(node_id, field1, field2, created_at)
             VALUES(%s, %s, %s, %s)
@@ -141,11 +151,18 @@ def sensor_collector():
         time.sleep(20)
 
 # -------------------------------
-# ROOT (FIXED YOUR ISSUE)
+# ROOT
 # -------------------------------
 @app.get("/")
 def root():
     return {"message": "API is running 🚀"}
+
+# -------------------------------
+# TEST ROUTE (DEBUG)
+# -------------------------------
+@app.get("/test")
+def test():
+    return {"status": "working"}
 
 # -------------------------------
 # SENSOR DATA
@@ -153,8 +170,10 @@ def root():
 @app.get("/sensor-data")
 def get_sensor_data():
     conn = get_connection()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
+    if conn is None:
+        return {"error": "DB not connected"}
 
+    cur = conn.cursor(cursor_factory=RealDictCursor)
     cur.execute("""
         SELECT id, node_id,
                field1 AS distance,
@@ -168,7 +187,6 @@ def get_sensor_data():
     data = cur.fetchall()
     cur.close()
     conn.close()
-
     return data
 
 # -------------------------------
@@ -177,18 +195,19 @@ def get_sensor_data():
 @app.get("/tank-parameters")
 def get_tank_parameters():
     conn = get_connection()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
+    if conn is None:
+        return {"error": "DB not connected"}
 
+    cur = conn.cursor(cursor_factory=RealDictCursor)
     cur.execute("SELECT * FROM tank_sensorparameters")
 
     data = cur.fetchall()
     cur.close()
     conn.close()
-
     return data
 
 # -------------------------------
-# PREDICT API
+# PREDICT
 # -------------------------------
 @app.post("/predict")
 def predict(data: dict = Body(...)):
@@ -202,21 +221,18 @@ def predict(data: dict = Body(...)):
         prediction = simple_model(input_value)
 
         conn = get_connection()
-        cur = conn.cursor()
+        if conn:
+            cur = conn.cursor()
+            cur.execute("""
+            INSERT INTO predictions(input_value, predicted_value, created_at)
+            VALUES(%s, %s, %s)
+            """, (input_value, prediction, datetime.now()))
 
-        cur.execute("""
-        INSERT INTO predictions(input_value, predicted_value, created_at)
-        VALUES(%s, %s, %s)
-        """, (input_value, prediction, datetime.now()))
+            conn.commit()
+            cur.close()
+            conn.close()
 
-        conn.commit()
-        cur.close()
-        conn.close()
-
-        return {
-            "input": input_value,
-            "prediction": prediction
-        }
+        return {"input": input_value, "prediction": prediction}
 
     except Exception as e:
         return {"error": str(e)}
@@ -227,8 +243,10 @@ def predict(data: dict = Body(...)):
 @app.get("/history")
 def get_history():
     conn = get_connection()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
+    if conn is None:
+        return {"error": "DB not connected"}
 
+    cur = conn.cursor(cursor_factory=RealDictCursor)
     cur.execute("""
     SELECT input_value, predicted_value, created_at
     FROM predictions
@@ -239,7 +257,6 @@ def get_history():
     data = cur.fetchall()
     cur.close()
     conn.close()
-
     return {"history": data}
 
 # -------------------------------
@@ -253,16 +270,22 @@ def model_info():
     }
 
 # -------------------------------
-# STARTUP
+# STARTUP (SAFE)
 # -------------------------------
 @app.on_event("startup")
 def startup():
-    create_tables()
+    print("🚀 Starting app...")
 
-    thread = threading.Thread(target=sensor_collector)
-    thread.daemon = True
-    thread.start()
-if __name__ == "__main__":
-    import uvicorn
-    port = int(os.environ.get("PORT", 10000))  # ✅ important
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    try:
+        create_tables()
+        print("✅ Tables ready")
+    except Exception as e:
+        print("❌ Table error:", e)
+
+    try:
+        thread = threading.Thread(target=sensor_collector)
+        thread.daemon = True
+        thread.start()
+        print("✅ Sensor thread started")
+    except Exception as e:
+        print("❌ Thread error:", e)
