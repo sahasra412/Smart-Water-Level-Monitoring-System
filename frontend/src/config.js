@@ -1,7 +1,9 @@
+const BASE_URL = "https://smart-water-level-monitoring-system.onrender.com";
+
 const config = {
-  PREDICTION_URL: "http://127.0.0.1:8000/predict",   // ✅ FIX THIS
-  SENSOR_DATA_URL: "http://127.0.0.1:8000/sensor-data",
-  HISTORY_URL: "http://127.0.0.1:8000/history"
+  SENSOR_DATA_URL: `${BASE_URL}/sensor-data`,
+  HISTORY_URL: `${BASE_URL}/history`,
+  PREDICTION_URL: `${BASE_URL}/predict`
 };
 
 export default config;

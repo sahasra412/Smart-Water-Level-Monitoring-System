@@ -19,7 +19,7 @@ load_dotenv()
 app = FastAPI()
 
 # -------------------------------
-# LOAD MODEL (SAFE)
+# LOAD MODEL
 # -------------------------------
 try:
     model = joblib.load("backend/model.pkl")
@@ -40,7 +40,7 @@ app.add_middleware(
 )
 
 # -------------------------------
-# DB CONNECTION (SAFE)
+# DB CONNECTION
 # -------------------------------
 def get_connection():
     try:
@@ -57,7 +57,7 @@ def get_connection():
         return None
 
 # -------------------------------
-# CREATE TABLES (SAFE)
+# CREATE TABLES
 # -------------------------------
 def create_tables():
     conn = get_connection()
@@ -103,14 +103,14 @@ def create_tables():
     conn.close()
 
 # -------------------------------
-# MODEL FUNCTION
+# MODEL FUNCTION (FIXED)
 # -------------------------------
 def simple_model(input_value):
     if model is None:
-        return float(round(input_value + random.uniform(-5, 5), 2))
+        return float(input_value + random.uniform(-5, 5))
 
-    pred = model.predict([[input_value]])[0]
-    return float(round(pred, 2))   # ✅ FORCE NORMAL FLOAT
+    pred = model.predict([[input_value]])
+    return float(pred.item())   # ✅ removes numpy completely
 
 # -------------------------------
 # SENSOR SIMULATION
@@ -123,7 +123,7 @@ def generate_data():
     return distance, temperature
 
 # -------------------------------
-# SENSOR THREAD (SAFE)
+# SENSOR THREAD
 # -------------------------------
 def sensor_collector():
     while True:
@@ -139,7 +139,7 @@ def sensor_collector():
             cur.execute("""
             INSERT INTO sensor_data(node_id, field1, field2, created_at)
             VALUES(%s, %s, %s, %s)
-            """, (NODE_ID, distance, temperature, datetime.now()))
+            """, (NODE_ID, float(distance), float(temperature), datetime.now()))
 
             conn.commit()
             cur.close()
@@ -160,7 +160,7 @@ def root():
     return {"message": "API is running 🚀"}
 
 # -------------------------------
-# TEST ROUTE (DEBUG)
+# TEST
 # -------------------------------
 @app.get("/test")
 def test():
@@ -209,7 +209,7 @@ def get_tank_parameters():
     return data
 
 # -------------------------------
-# PREDICT
+# PREDICT (FINAL FIXED)
 # -------------------------------
 @app.post("/predict")
 def predict(data: dict = Body(...)):
@@ -220,7 +220,11 @@ def predict(data: dict = Body(...)):
             return {"error": "Input required"}
 
         input_value = float(input_value)
-        prediction = float(simple_model(input_value))  # ✅ double safety
+        prediction = simple_model(input_value)
+
+        # 🔥 FORCE CLEAN VALUES
+        input_value = float(input_value)
+        prediction = float(prediction)
 
         conn = get_connection()
         if conn:
@@ -272,7 +276,7 @@ def model_info():
     }
 
 # -------------------------------
-# STARTUP (SAFE)
+# STARTUP
 # -------------------------------
 @app.on_event("startup")
 def startup():
