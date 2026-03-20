@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import axios from "axios";
 import config from "../config";
 
@@ -24,23 +24,18 @@ function Home() {
   const [input, setInput] = useState("");
   const [prediction, setPrediction] = useState(null);
   const [predictionHistory, setPredictionHistory] = useState([]);
-
-  const [backendStatus, setBackendStatus] = useState("CONNECTING");
+  const [backendOffline, setBackendOffline] = useState(false);
 
   const tankHeight = 200;
 
-  // -------------------------------
-  // DEMO DATA
-  // -------------------------------
+  // ---------------- DEMO DATA ----------------
   const DEMO_DATA = [
     { distance: 90, temperature: 25, created_at: new Date().toISOString() },
     { distance: 80, temperature: 26, created_at: new Date(Date.now() - 60000).toISOString() },
     { distance: 70, temperature: 24, created_at: new Date(Date.now() - 120000).toISOString() }
   ];
 
-  // -------------------------------
-  // PROCESS DATA
-  // -------------------------------
+  // ---------------- PROCESS DATA ----------------
   const processData = (data, mode) => {
     const latest = data[0];
 
@@ -62,23 +57,20 @@ function Home() {
     setHistory(chartData.reverse());
   };
 
-  // -------------------------------
-  // FETCH SENSOR DATA
-  // -------------------------------
-  const fetchData = async () => {
+  // ---------------- FETCH SENSOR DATA ----------------
+  const fetchData = useCallback(async () => {
     try {
       const res = await axios.get(config.SENSOR_DATA_URL);
       const data = res.data;
 
       if (!data || data.length === 0) throw new Error();
 
+      setBackendOffline(false);
       localStorage.setItem("sensorData", JSON.stringify(data));
-
       processData(data, "LIVE");
-      setBackendStatus("LIVE");
 
     } catch (err) {
-      setBackendStatus("OFFLINE");
+      setBackendOffline(true);
 
       const saved = localStorage.getItem("sensorData");
 
@@ -88,88 +80,58 @@ function Home() {
         processData(DEMO_DATA, "DEMO");
       }
     }
-  };
+  }, []);
 
-  // -------------------------------
-  // FETCH PREDICTION HISTORY
-  // -------------------------------
-  const fetchPredictionHistory = async () => {
+  // ---------------- FETCH PREDICTION HISTORY ----------------
+  const fetchPredictionHistory = useCallback(async () => {
     try {
       const res = await axios.get(config.HISTORY_URL);
 
       const formatted = res.data.history.map(item => ({
-        predicted_value: item.predicted_value,
+        ...item,
         created_at: new Date(item.created_at).toLocaleTimeString()
       }));
 
-      setPredictionHistory(formatted.slice(-10));
+      setPredictionHistory(formatted.slice(0, 10).reverse());
 
     } catch (err) {
-      console.log("History unavailable");
+      console.log("Prediction history fallback");
     }
-  };
+  }, []);
 
-  // -------------------------------
-  // PREDICT FUNCTION (PRO)
-  // -------------------------------
+  // ---------------- PREDICT ----------------
   const handlePredict = async () => {
-    try {
-      if (!input) return;
+    if (!input) return;
 
+    try {
       const res = await axios.post(config.PREDICTION_URL, {
         value: Number(input)
       });
 
-      const newPrediction = res.data.prediction;
-
-      setPrediction(newPrediction);
-      setBackendStatus("LIVE");
-
-      const newPoint = {
-        predicted_value: newPrediction,
-        created_at: new Date().toLocaleTimeString()
-      };
-
-      // ✅ Smooth graph update (last 10 only)
-      setPredictionHistory(prev => [
-        ...prev.slice(-9),
-        newPoint
-      ]);
+      setBackendOffline(false);
+      setPrediction(res.data.prediction);
 
       fetchPredictionHistory();
 
     } catch (err) {
-      setBackendStatus("OFFLINE");
+      setBackendOffline(true);
 
-      const fallback = Math.round(Number(input) * 1.1);
-      setPrediction(fallback);
-
-      const newPoint = {
-        predicted_value: fallback,
-        created_at: new Date().toLocaleTimeString()
-      };
-
-      setPredictionHistory(prev => [
-        ...prev.slice(-9),
-        newPoint
-      ]);
+      // 🔥 OFFLINE PREDICTION (fallback)
+      const fakePrediction = Math.round(Number(input) * 1.1);
+      setPrediction(fakePrediction);
     }
   };
 
-  // -------------------------------
-  // AUTO REFRESH
-  // -------------------------------
+  // ---------------- USE EFFECT ----------------
   useEffect(() => {
     fetchData();
     fetchPredictionHistory();
 
     const interval = setInterval(fetchData, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchData, fetchPredictionHistory]);
 
-  // -------------------------------
-  // STATUS
-  // -------------------------------
+  // ---------------- STATUS ----------------
   let status = "NORMAL";
   let alertMessage = "";
 
@@ -183,23 +145,18 @@ function Home() {
     alertMessage = "⚠ Tank Almost Full!";
   }
 
-  // -------------------------------
-  // UI
-  // -------------------------------
+  // ---------------- UI ----------------
   return (
-
     <div className="dashboard">
 
-      <h1 className="title">Smart Water Level Monitoring System</h1>
+      {backendOffline && (
+        <div className="backend-badge">
+          🔴 Backend Offline
+        </div>
+      )}
 
-      {/* Backend Status */}
-      <div className={`backend-status ${backendStatus.toLowerCase()}`}>
-        {backendStatus === "LIVE" && "🟢 Backend Online"}
-        {backendStatus === "OFFLINE" && "🔴 Backend Offline"}
-        {backendStatus === "CONNECTING" && "🟡 Connecting..."}
-      </div>
+      <h1 className="title">🚰 Smart IoT Dashboard</h1>
 
-      {/* Device Status */}
       <div className={`device-status ${deviceStatus.toLowerCase()}`}>
         {deviceStatus === "LIVE" && "🟢 DEVICE LIVE"}
         {deviceStatus === "CACHED" && "🟡 USING SAVED DATA"}
@@ -211,7 +168,6 @@ function Home() {
 
       <div className="top-section">
 
-        {/* WATER */}
         <div className="card">
           <h3>Water Level</h3>
           <div className="tank">
@@ -222,13 +178,11 @@ function Home() {
           <h2 className="value">{waterLevel}%</h2>
         </div>
 
-        {/* TEMP */}
         <div className="card">
           <h3>Temperature</h3>
           <div className="temp-display">🌡 {temperature}°C</div>
         </div>
 
-        {/* STATUS */}
         <div className="card">
           <h3>Status</h3>
           <div className={`status ${status.toLowerCase()}`}>
@@ -236,7 +190,6 @@ function Home() {
           </div>
         </div>
 
-        {/* PREDICTION */}
         <div className="card">
           <h3>Prediction</h3>
 
@@ -245,27 +198,25 @@ function Home() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Enter value"
-            style={{ padding: "10px", width: "80%", marginBottom: "10px" }}
           />
 
-          <button onClick={handlePredict} style={{ padding: "10px 20px" }}>
+          <button onClick={handlePredict}>
             Predict
           </button>
 
-          <h3 style={{ marginTop: "10px" }}>
+          <h3>
             Result: {prediction !== null ? prediction : "—"}
           </h3>
         </div>
 
       </div>
 
-      <div style={{ textAlign: "center", marginBottom: "20px" }}>
-        <h3>Model: Linear Regression</h3>
-      </div>
+      <h3 style={{ textAlign: "center" }}>
+        Model: Linear Regression
+      </h3>
 
       <div className="charts">
 
-        {/* WATER */}
         <div className="chart-card">
           <h3>Water History</h3>
           <ResponsiveContainer width="100%" height={300}>
@@ -274,20 +225,11 @@ function Home() {
               <XAxis dataKey="time" />
               <YAxis />
               <Tooltip />
-              <Line 
-                type="monotone" 
-                dataKey="water" 
-                stroke="#38bdf8" 
-                strokeWidth={4} 
-                dot={false}
-                isAnimationActive={true}
-                animationDuration={500}
-              />
+              <Line type="monotone" dataKey="water" stroke="#38bdf8" strokeWidth={4}/>
             </LineChart>
           </ResponsiveContainer>
         </div>
 
-        {/* TEMP */}
         <div className="chart-card">
           <h3>Temperature History</h3>
           <ResponsiveContainer width="100%" height={300}>
@@ -296,20 +238,11 @@ function Home() {
               <XAxis dataKey="time" />
               <YAxis />
               <Tooltip />
-              <Line 
-                type="monotone" 
-                dataKey="temp" 
-                stroke="#fb7185" 
-                strokeWidth={4} 
-                dot={false}
-                isAnimationActive={true}
-                animationDuration={500}
-              />
+              <Line type="monotone" dataKey="temp" stroke="#fb7185" strokeWidth={4}/>
             </LineChart>
           </ResponsiveContainer>
         </div>
 
-        {/* PREDICTION */}
         <div className="chart-card">
           <h3>Prediction History</h3>
           <ResponsiveContainer width="100%" height={300}>
@@ -318,14 +251,7 @@ function Home() {
               <XAxis dataKey="created_at" />
               <YAxis />
               <Tooltip />
-              <Line 
-                type="monotone" 
-                dataKey="predicted_value" 
-                stroke="#22c55e" 
-                strokeWidth={4}
-                isAnimationActive={true}
-                animationDuration={600}
-              />
+              <Line type="monotone" dataKey="predicted_value" stroke="#22c55e" strokeWidth={4}/>
             </LineChart>
           </ResponsiveContainer>
         </div>
