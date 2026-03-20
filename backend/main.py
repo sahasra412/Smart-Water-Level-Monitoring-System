@@ -107,8 +107,10 @@ def create_tables():
 # -------------------------------
 def simple_model(input_value):
     if model is None:
-        return round(input_value + random.uniform(-5, 5), 2)
-    return round(model.predict([[input_value]])[0], 2)
+        return float(round(input_value + random.uniform(-5, 5), 2))
+
+    pred = model.predict([[input_value]])[0]
+    return float(round(pred, 2))   # ✅ FORCE NORMAL FLOAT
 
 # -------------------------------
 # SENSOR SIMULATION
@@ -218,7 +220,7 @@ def predict(data: dict = Body(...)):
             return {"error": "Input required"}
 
         input_value = float(input_value)
-        prediction = simple_model(input_value)
+        prediction = float(simple_model(input_value))  # ✅ double safety
 
         conn = get_connection()
         if conn:
